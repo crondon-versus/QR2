@@ -4,15 +4,6 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap">
 
 <style>
-  /* Registered so a malformed value is discarded at parse time instead of
-     silently blanking the track. The initial value is a flat neutral rather than
-     "none", because "none" would beat the plain-background fallback below it. */
-  @property --zones {
-    syntax: "<image>";
-    inherits: false;
-    initial-value: linear-gradient(#EBE6DA, #EBE6DA);
-  }
-
   /* ---------- tokens: light is the base, every colour declared here ---------- */
   :root {
     --ground:      #FFFFFF;
@@ -300,18 +291,17 @@
     width: 100%; height: 22px; margin: 0; background: transparent; cursor: pointer;
   }
   /* Separate blocks per engine: one unrecognised pseudo-element would drop the
-     whole rule. The plain background comes first as the real fallback, because a
-     var() fallback cannot rescue an invalid substituted value. */
+     whole rule. --zones is left UNREGISTERED on purpose so it inherits from the
+     input into these pseudo-elements; the var() fallback covers the moment before
+     the script sets it. */
   input[type="range"]::-webkit-slider-runnable-track {
     height: 8px; border-radius: 4px;
-    background: var(--panel-2);
-    background: var(--zones);
+    background: var(--zones, var(--panel-2));
     border: 1px solid var(--line-strong);
   }
   input[type="range"]::-moz-range-track {
     height: 8px; border-radius: 4px;
-    background: var(--panel-2);
-    background: var(--zones);
+    background: var(--zones, var(--panel-2));
     border: 1px solid var(--line-strong);
   }
   input[type="range"]::-webkit-slider-thumb {
