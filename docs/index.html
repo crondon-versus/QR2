@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- GENERADO AUTOMATICAMENTE. No editar este archivo.
-     Fuente: web/index.html (sha256:d48eab8271ac)
+     Fuente: web/index.html (sha256:66403189f930)
      Regenerar con: python web/build.py -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -544,8 +544,8 @@
   <p class="noscript">Esta herramienta necesita JavaScript activado para funcionar.</p>
 </noscript>
 
-<div class="gate" id="gate" hidden>
-  <form class="gate-card" id="gate-form" autocomplete="on">
+<div class="gate" id="gate">
+  <form class="gate-card" id="gate-form" autocomplete="on" onsubmit="return false">
     <svg class="finder-mark" viewBox="0 0 26 26" aria-hidden="true" fill="none">
       <rect x="0.5" y="0.5" width="6" height="6" stroke="currentColor"></rect>
       <rect x="2" y="2" width="3" height="3" fill="currentColor"></rect>
@@ -685,6 +685,13 @@
         </div>
       </div>
 
+      <div class="field" id="quien-field" hidden>
+        <label class="field-label" for="quien"><span>Quién lo hace</span></label>
+        <input type="text" id="quien" autocomplete="name" spellcheck="false"
+               placeholder="Tu nombre">
+        <p class="hint">Solo se usa para el histórico compartido, para saber quién generó cada código. Se recuerda en este navegador.</p>
+      </div>
+
       <div class="field">
         <span class="field-label"><span>Resolución</span></span>
         <div class="seg" id="seg-size" role="group" aria-label="Resolución de salida">
@@ -712,6 +719,90 @@
     <button type="button" class="logout" id="logout">Salir</button>
   </p>
 </div>
+
+<script>
+/* ---------- puerta de acceso ----------
+
+   AVISO HONESTO, para quien lea esto dentro de un ano: ESTO NO ES SEGURIDAD.
+   La contrasena viaja dentro de esta misma pagina, asi que cualquiera que abra el
+   codigo fuente o las herramientas de desarrollo del navegador la puede leer. Es
+   un cartel de "no pasar", no una cerradura: frena al curioso y nada mas. Se
+   eligio a sabiendas, porque aqui no hay nada secreto que proteger, solo se trata
+   de que un desconocido no se ponga a generar codigos.
+
+   Si algun dia hace falta proteccion de verdad, la via es .htpasswd en el servidor
+   (Apache) o Cloudflare Access delante: ahi la clave la comprueba el servidor y
+   nunca llega al navegador.
+
+   PARA CAMBIAR EL ACCESO: edita las dos lineas USUARIO y CLAVE de abajo. Nada mas.
+*/
+(function () {
+  "use strict";
+
+  var USUARIO = "admin";
+  var CLAVE = "grupoversus";
+
+  var KEY = "qr-versus-acceso-v1";
+  var gate = document.getElementById("gate");
+  var shell = document.getElementById("shell");
+  var form = document.getElementById("gate-form");
+  var user = document.getElementById("gate-user");
+  var pass = document.getElementById("gate-pass");
+  var note = document.getElementById("gate-msg");
+  var exit = document.getElementById("logout");
+
+  function show(unlocked) {
+    if (gate) gate.hidden = !!unlocked;
+    if (shell) shell.hidden = !unlocked;
+  }
+
+  function say(text, tone) {
+    if (!note) return;
+    note.textContent = text || "";
+    if (tone) note.setAttribute("data-tone", tone); else note.removeAttribute("data-tone");
+  }
+
+  if (form) {
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var u = (user.value || "").trim().toLowerCase();
+      // Se recorta igual que el usuario: la clave circula por correo y WhatsApp, al
+      // copiarla se arrastra un espacio final casi siempre, y el campo esta
+      // enmascarado, asi que nadie puede ver que sobra un caracter invisible.
+      var p = (pass.value || "").trim();
+      if (u === USUARIO && p === CLAVE) {
+        say("");
+        var remembered = true;
+        try { localStorage.setItem(KEY, "1"); } catch (err) { remembered = false; }
+        show(true);
+        if (!remembered) {
+          say("Entraste, pero este navegador no permite recordar la sesion, "
+              + "asi que te pedira la clave otra vez al recargar.");
+        }
+      } else {
+        say("Usuario o contrasena incorrectos.", "err");
+        pass.value = "";
+        pass.focus();
+      }
+    });
+  }
+
+  if (exit) {
+    exit.addEventListener("click", function () {
+      try { localStorage.removeItem(KEY); } catch (err) {}
+      show(false);
+      say("");
+      if (pass) pass.value = "";
+      if (user) { user.value = ""; user.focus(); }
+    });
+  }
+
+  var entered = false;
+  try { entered = localStorage.getItem(KEY) === "1"; } catch (err) { /* ventana privada */ }
+  show(entered);
+  if (!entered && user) user.focus();
+})();
+</script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.5.2/qrcode.min.js"></script>
 <script>
@@ -743,6 +834,10 @@
   var MAX_UPLOAD = 5 * 1024 * 1024;
   var LOGO_BOX = 320;     // uploads are normalised to this box before anything else
   var STORE_KEY = "qr-versus-logo-v1";
+  var QUIEN_KEY = "qr-versus-quien-v1";
+  // build.py lo sustituye por la ruta real al generar docs/. En el artifact se
+  // queda en null: alli no existe el PHP y la CSP bloquearia la peticion.
+  var HISTORICO_URL = "registrar.php";
 
   function lerp(a, b, t) { return a + (b - a) * t; }
 
@@ -794,7 +889,7 @@
   }
 
   var el = {};
-  ["url","url-msg","logo-on","logo-on-text","logo-on-hint","logo-fields","logo-extra","drop",
+  ["url","url-msg","quien","quien-field","logo-on","logo-on-text","logo-on-hint","logo-fields","logo-extra","drop",
    "thumb-img","drop-name","drop-meta","drop-clear","file","logo-msg","size","zone-legend",
    "plate","seg-size","seg-fmt","fmt-hint","canvas","blocker","verdict","verdict-text",
    "verdict-tail","warnbar","r-size","r-print","save","save-note"
@@ -954,6 +1049,24 @@
     // error-correction headroom, so ask for a bit more physical size when there is one.
     var mm = hasLogo ? 0.6 : 0.5;
     return ((modules + QUIET * 2) * mm / 10).toFixed(1).replace(".", ",");
+  }
+
+  // Anade una linea al historico compartido. Nunca debe estorbar: si falla, falla
+  // en silencio, porque perder una linea del historico no es motivo para que
+  // alguien se quede sin su codigo.
+  function registrar() {
+    if (!HISTORICO_URL) return;
+    try {
+      var body = new URLSearchParams();
+      body.set("url", state.text.trim());
+      body.set("quien", (el.quien && el.quien.value ? el.quien.value.trim() : ""));
+      body.set("logo", (state.logoOn && state.logoName) ? state.logoName : "sin logo");
+      body.set("tamano", el["r-size"].textContent);
+      body.set("formato", state.fmt);
+      body.set("veredicto", el["verdict-text"].textContent);
+      fetch(HISTORICO_URL, { method: "POST", body: body, keepalive: true })
+        .catch(function () {});
+    } catch (e) {}
   }
 
   function slug(text) {
@@ -1310,6 +1423,7 @@
       if (downloadsApi) {
         downloadsApi.save({ filename: filename, data: blob }).then(function () {
           saveMsg("Guardado como " + filename, "ok");
+          registrar();
         }).catch(function (err) {
           var code = err && err.code;
           if (code === "declined") { saveMsg("Guardado cancelado."); return; }
@@ -1330,10 +1444,19 @@
       document.body.removeChild(a);
       setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
       saveMsg("Si no aparece la descarga: " + LONG_PRESS);
+      registrar();
     }, mime, 0.95);
   });
 
   /* ---------------- boot ---------------- */
+
+  if (HISTORICO_URL && el["quien-field"]) el["quien-field"].hidden = false;
+  if (el.quien) {
+    try { el.quien.value = localStorage.getItem(QUIEN_KEY) || ""; } catch (e) {}
+    el.quien.addEventListener("change", function () {
+      try { localStorage.setItem(QUIEN_KEY, el.quien.value.trim()); } catch (e) {}
+    });
+  }
 
   var saved = recall();
   if (saved) {
@@ -1346,82 +1469,6 @@
   syncLogoToggle();
   setThumb();
   render();
-})();
-</script>
-
-<script>
-/* ---------- puerta de acceso ----------
-
-   AVISO HONESTO, para quien lea esto dentro de un ano: ESTO NO ES SEGURIDAD.
-   La contrasena viaja dentro de esta misma pagina, asi que cualquiera que abra el
-   codigo fuente o las herramientas de desarrollo del navegador la puede leer. Es
-   un cartel de "no pasar", no una cerradura: frena al curioso y nada mas. Se
-   eligio a sabiendas, porque aqui no hay nada secreto que proteger, solo se trata
-   de que un desconocido no se ponga a generar codigos.
-
-   Si algun dia hace falta proteccion de verdad, la via es .htpasswd en el servidor
-   (Apache) o Cloudflare Access delante: ahi la clave la comprueba el servidor y
-   nunca llega al navegador.
-
-   PARA CAMBIAR EL ACCESO: edita las dos lineas USUARIO y CLAVE de abajo. Nada mas.
-*/
-(function () {
-  "use strict";
-
-  var USUARIO = "admin";
-  var CLAVE = "grupoversus";
-
-  var KEY = "qr-versus-acceso-v1";
-  var gate = document.getElementById("gate");
-  var shell = document.getElementById("shell");
-  var form = document.getElementById("gate-form");
-  var user = document.getElementById("gate-user");
-  var pass = document.getElementById("gate-pass");
-  var note = document.getElementById("gate-msg");
-  var exit = document.getElementById("logout");
-
-  function show(unlocked) {
-    if (gate) gate.hidden = !!unlocked;
-    if (shell) shell.hidden = !unlocked;
-  }
-
-  function say(text, tone) {
-    if (!note) return;
-    note.textContent = text || "";
-    if (tone) note.setAttribute("data-tone", tone); else note.removeAttribute("data-tone");
-  }
-
-  if (form) {
-    form.addEventListener("submit", function (e) {
-      e.preventDefault();
-      var u = (user.value || "").trim().toLowerCase();
-      var p = pass.value || "";
-      if (u === USUARIO && p === CLAVE) {
-        say("");
-        try { localStorage.setItem(KEY, "1"); } catch (err) { /* ventana privada */ }
-        show(true);
-      } else {
-        say("Usuario o contrasena incorrectos.", "err");
-        pass.value = "";
-        pass.focus();
-      }
-    });
-  }
-
-  if (exit) {
-    exit.addEventListener("click", function () {
-      try { localStorage.removeItem(KEY); } catch (err) {}
-      show(false);
-      say("");
-      if (pass) pass.value = "";
-      if (user) { user.value = ""; user.focus(); }
-    });
-  }
-
-  var entered = false;
-  try { entered = localStorage.getItem(KEY) === "1"; } catch (err) { /* ventana privada */ }
-  show(entered);
-  if (!entered && user) user.focus();
 })();
 </script>
 </body>

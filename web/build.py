@@ -28,6 +28,7 @@ import argparse
 import hashlib
 import os
 import re
+import shutil
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -35,6 +36,13 @@ ROOT = os.path.dirname(HERE)
 SOURCE = os.path.join(HERE, "index.html")
 OUT_DIR = os.path.join(ROOT, "docs")
 OUT = os.path.join(OUT_DIR, "index.html")
+DEPLOY_DIR = os.path.join(HERE, "deploy")
+
+# El historico compartido solo existe en la version desplegada: en el artifact no
+# hay PHP y la CSP bloquearia la peticion, asi que alli la marca se queda en null.
+MARCA_HISTORICO = "var HISTORICO_URL = null;"
+RUTA_HISTORICO = 'var HISTORICO_URL = "registrar.php";'
+
 
 # Elementos que pertenecen a <head>. Se consumen desde el principio del archivo
 # mientras aparezcan; el resto es el cuerpo.
@@ -90,6 +98,14 @@ def render(src: str) -> str:
             "ERROR: el cuerpo extraido no contiene el <canvas> del codigo QR. "
             "El reparto entre <head> y <body> ha salido mal."
         )
+
+    if MARCA_HISTORICO not in body:
+        raise SystemExit(
+            "ERROR: no encontre la marca del historico (%s) en web/index.html.\n"
+            "Si se renombro la variable, actualiza MARCA_HISTORICO en este script."
+            % MARCA_HISTORICO
+        )
+    body = body.replace(MARCA_HISTORICO, RUTA_HISTORICO, 1)
 
     digest = hashlib.sha256(src.encode("utf-8")).hexdigest()[:12]
     return (
@@ -152,9 +168,22 @@ def main():
     if not os.path.exists(nojekyll):
         open(nojekyll, "w").close()
 
+    # El historico compartido y la proteccion del CSV viajan con la pagina.
+    copiados = []
+    for nombre in ("registrar.php", ".htaccess"):
+        origen = os.path.join(DEPLOY_DIR, nombre)
+        if os.path.exists(origen):
+            shutil.copy2(origen, os.path.join(OUT_DIR, nombre))
+            copiados.append(nombre)
+
     print("Generado docs/index.html (%d KB) desde web/index.html"
           % (len(rendered.encode("utf-8")) // 1024))
-    print("Para publicarlo: Settings > Pages > Deploy from a branch > main /docs")
+    if copiados:
+        print("Copiados a docs/: %s" % ", ".join(copiados))
+    print()
+    print("DESPLIEGUE: sube TODO el contenido de docs/ por FTP a la carpeta que sirva")
+    print("la pagina. El historico (registrar.php) necesita PHP, asi que funciona en")
+    print("vuestro hosting pero NO en GitHub Pages, que solo sirve archivos estaticos.")
 
 
 if __name__ == "__main__":
