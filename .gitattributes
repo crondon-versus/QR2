@@ -1,2 +1,7 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Los archivos que se suben por FTP a un Apache deben conservar finales de linea
+# Unix: un .htaccess con CRLF puede hacer que algunas configuraciones fallen.
+*.php     text eol=lf
+.htaccess text eol=lf
