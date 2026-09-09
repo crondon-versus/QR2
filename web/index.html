@@ -1,0 +1,1242 @@
+<title>Generador QR Versus</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap">
+
+<style>
+  /* Registered so a malformed value is discarded at parse time instead of
+     silently blanking the track. The initial value is a flat neutral rather than
+     "none", because "none" would beat the plain-background fallback below it. */
+  @property --zones {
+    syntax: "<image>";
+    inherits: false;
+    initial-value: linear-gradient(#EBE6DA, #EBE6DA);
+  }
+
+  /* ---------- tokens: light is the base, every colour declared here ---------- */
+  :root {
+    --ground:      #FFFFFF;
+    --panel:       #FBF6EE;
+    --panel-2:     #EBE6DA;
+    --line:        #E4DCCC;
+    --line-strong: #CFC5B2;
+    --text:        #474645;
+    --text-2:      #6F6F6E;
+    --text-3:      #96908A;
+    --gold:        #CF9D55;
+    --gold-soft:   #F3E6D2;
+    --bronze:      #99794A;
+    --ink:         #3D3D3D;
+    /* text-safe on this ground */
+    --ok:          #3A8560;
+    --warn:        #8A6410;
+    --danger:      #C13048;
+    /* block fills for the meter — free to be vivid */
+    --ok-fill:     #57B183;
+    --warn-fill:   #F2C230;
+    --danger-fill: #E2596E;
+    --focus:       #99794A;
+    --qr-paper:    #FFFFFF;
+    --shadow:      0 1px 2px rgba(71,70,69,.06), 0 8px 24px -12px rgba(153,121,74,.22);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #17150F;
+      --panel:       #201D16;
+      --panel-2:     #2A251C;
+      --line:        #332E24;
+      --line-strong: #4A4335;
+      --text:        #EDE7DB;
+      --text-2:      #B5AC9C;
+      --text-3:      #8A8274;
+      --gold:        #D8A860;
+      --gold-soft:   #3A301F;
+      --bronze:      #B08B52;
+      --ink:         #EDE7DB;
+      --ok:          #86D2A3;
+      --warn:        #F0C64A;
+      --danger:      #F58D9D;
+      --ok-fill:     #5FB784;
+      --warn-fill:   #F2C230;
+      --danger-fill: #E2596E;
+      --focus:       #D8A860;
+      --qr-paper:    #FFFFFF;
+      --shadow:      0 1px 2px rgba(0,0,0,.4), 0 8px 28px -14px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:      #17150F;
+    --panel:       #201D16;
+    --panel-2:     #2A251C;
+    --line:        #332E24;
+    --line-strong: #4A4335;
+    --text:        #EDE7DB;
+    --text-2:      #B5AC9C;
+    --text-3:      #8A8274;
+    --gold:        #D8A860;
+    --gold-soft:   #3A301F;
+    --bronze:      #B08B52;
+    --ink:         #EDE7DB;
+    --ok:          #86D2A3;
+    --warn:        #F0C64A;
+    --danger:      #F58D9D;
+    --ok-fill:     #5FB784;
+    --warn-fill:   #F2C230;
+    --danger-fill: #E2596E;
+    --focus:       #D8A860;
+    --qr-paper:    #FFFFFF;
+    --shadow:      0 1px 2px rgba(0,0,0,.4), 0 8px 28px -14px rgba(0,0,0,.7);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--text);
+    font-family: "Roboto", "Helvetica Neue", Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  .wordmark, .eyebrow, .field-label, .seg button, .verdict, .readout dt, .btn-save {
+    font-family: "Jost", "Century Gothic", "Roboto", sans-serif;
+  }
+  .mono, .readout dd, .num { font-family: "Roboto Mono", ui-monospace, monospace; }
+
+  .shell { max-width: 1120px; margin: 0 auto; padding: 28px 22px 56px; }
+
+  /* ---------- header ---------- */
+  .masthead {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .finder-mark { color: var(--gold); flex: 0 0 auto; width: 40px; height: 40px; margin-top: 4px; }
+  .wordmark {
+    margin: 0;
+    font-size: clamp(24px, 4.4vw, 35px);
+    font-weight: 700;
+    line-height: 1.02;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--text);
+    text-wrap: balance;
+  }
+  .wordmark b { color: var(--gold); font-weight: 700; }
+  .eyebrow {
+    margin: 7px 0 0;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .17em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+
+  /* ---------- workspace ----------
+     The preview must be the FIRST thing on a narrow screen and must stay put
+     while the controls below it are used — otherwise the logo slider is dragged
+     with the code it changes off screen. */
+  .workspace {
+    display: grid;
+    gap: 26px;
+    align-items: start;
+    padding-top: 24px;
+  }
+  /* On a phone the rail dissolves so its two halves become grid items in their
+     own right: the code pins to the top, the readout and Save drop below the
+     controls. On desktop it re-forms as the sticky right-hand column. */
+  .rail { display: contents; }
+  .stage { order: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+  .controls { order: 2; }
+  .outputs { order: 3; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+
+  @media (max-width: 899px) {
+    .stage {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: var(--ground);
+      padding: 8px 0 10px;
+      border-bottom: 1px solid var(--line);
+    }
+    .stage .plate { padding: 10px; }
+    .qr-frame { max-width: min(46vw, 186px); margin: 0 auto; }
+  }
+  @media (min-width: 900px) {
+    .workspace { grid-template-columns: minmax(0, 1fr) minmax(0, 420px); gap: 44px; }
+    .rail {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-width: 0;
+      grid-column: 2;
+      grid-row: 1;
+      position: sticky;
+      top: 22px;
+    }
+    .controls { grid-column: 1; grid-row: 1; }
+    .stage { gap: 14px; }
+  }
+
+  /* ---------- control column ---------- */
+  .controls { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .field:first-child { padding-top: 0; }
+  .field-label {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    color: var(--text-2);
+  }
+  .hint { margin: 0; font-size: 12.5px; color: var(--text-3); }
+  .field-msg { margin: 0; font-size: 13px; color: var(--text-3); }
+  .field-msg:empty { display: none; }
+  .field-msg[data-tone="err"] { color: var(--danger); font-weight: 500; }
+  .field-msg[data-tone="ok"] { color: var(--ok); }
+
+  input[type="url"], input[type="text"] {
+    width: 100%;
+    padding: 11px 13px;
+    font: inherit;
+    font-size: 15px;
+    color: var(--text);
+    background: var(--ground);
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+  }
+  input[type="url"]:focus, input[type="text"]:focus {
+    border-color: var(--gold); outline: none; box-shadow: 0 0 0 3px var(--gold-soft);
+  }
+
+  /* switch */
+  .switch { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+  .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .switch .track {
+    position: relative; flex: 0 0 auto;
+    width: 42px; height: 24px; border-radius: 999px;
+    background: var(--panel-2);
+    border: 1px solid var(--line-strong);
+    transition: background .16s ease, border-color .16s ease;
+  }
+  .switch .track::after {
+    content: ""; position: absolute; top: 3px; left: 3px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--text-3);
+    transition: transform .16s ease, background .16s ease;
+  }
+  .switch input:checked + .track { background: var(--gold); border-color: var(--bronze); }
+  .switch input:checked + .track::after { transform: translateX(18px); background: #fff; }
+  .switch input:focus-visible + .track { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .switch .switch-text { font-size: 14px; color: var(--text); }
+
+  /* upload — the drop area is a real button, and Quitar is its SIBLING, never nested */
+  .drop-row { display: flex; align-items: stretch; gap: 8px; }
+  .drop {
+    flex: 1 1 auto;
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px;
+    font: inherit;
+    text-align: left;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px dashed var(--line-strong);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: border-color .15s ease, background .15s ease;
+  }
+  .drop:hover, .drop.over { border-color: var(--gold); background: var(--gold-soft); }
+  .drop.over { border-style: solid; }
+  .thumb {
+    flex: 0 0 auto;
+    width: 52px; height: 52px;
+    display: grid; place-items: center;
+    background: var(--qr-paper);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .drop-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .drop-name {
+    font-size: 14px; font-weight: 500;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .drop-meta { font-size: 12px; color: var(--text-3); }
+  .drop-clear {
+    flex: 0 0 auto;
+    padding: 6px 12px; font: inherit; font-size: 12.5px;
+    color: var(--text-2); background: var(--ground);
+    border: 1px solid var(--line-strong); border-radius: 3px; cursor: pointer;
+  }
+  .drop-clear:hover { color: var(--danger); border-color: var(--danger); }
+
+  /* range with live safety zones */
+  .range-wrap { display: flex; flex-direction: column; gap: 8px; }
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 22px; margin: 0; background: transparent; cursor: pointer;
+  }
+  /* Separate blocks per engine: one unrecognised pseudo-element would drop the
+     whole rule. The plain background comes first as the real fallback, because a
+     var() fallback cannot rescue an invalid substituted value. */
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 8px; border-radius: 4px;
+    background: var(--panel-2);
+    background: var(--zones);
+    border: 1px solid var(--line-strong);
+  }
+  input[type="range"]::-moz-range-track {
+    height: 8px; border-radius: 4px;
+    background: var(--panel-2);
+    background: var(--zones);
+    border: 1px solid var(--line-strong);
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 18px; height: 18px; margin-top: -6px;
+    border-radius: 50%; background: var(--ground);
+    border: 2px solid var(--ink);
+    box-shadow: 0 1px 3px rgba(0,0,0,.3);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 16px; height: 16px;
+    border-radius: 50%; background: var(--ground);
+    border: 2px solid var(--ink);
+  }
+  .zone-legend {
+    display: flex; flex-wrap: wrap; gap: 4px 16px;
+    font-size: 11.5px; color: var(--text-3);
+  }
+  .zone-legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .zone-legend i { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
+
+  /* segmented control */
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg button {
+    padding: 8px 14px;
+    font-size: 12px; font-weight: 500; letter-spacing: .06em;
+    color: var(--text-2);
+    background: var(--ground);
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: color .14s ease, border-color .14s ease, background .14s ease;
+  }
+  .seg button:hover { color: var(--text); border-color: var(--bronze); }
+  .seg button[aria-pressed="true"] {
+    color: #FFFFFF;
+    background: var(--bronze);
+    border-color: var(--bronze);
+  }
+
+  /* ---------- stage ---------- */
+  .plate {
+    padding: 18px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    box-shadow: var(--shadow);
+  }
+  .qr-frame {
+    background: var(--qr-paper);
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    line-height: 0;
+    overflow: hidden;
+  }
+  .qr-frame canvas { display: block; width: 100%; height: auto; }
+
+  .verdict {
+    display: flex; align-items: center; gap: 9px;
+    padding: 10px 13px;
+    font-size: 12.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+    border-radius: 4px;
+    border: 1px solid currentColor;
+    margin: 0;
+  }
+  .verdict .dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+  .verdict .tail {
+    margin-left: auto;
+    font-family: "Roboto Mono", monospace; font-size: 11.5px; font-weight: 400;
+    letter-spacing: .02em; text-transform: none; opacity: .85;
+  }
+  .verdict[data-level="ok"]     { color: var(--ok); }
+  .verdict[data-level="warn"]   { color: var(--warn); }
+  .verdict[data-level="danger"] { color: var(--danger); }
+
+  .readout {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    margin: 0;
+    font-size: 12.5px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .readout dt {
+    padding: 8px 12px;
+    font-size: 10.5px; font-weight: 500; letter-spacing: .13em; text-transform: uppercase;
+    color: var(--text-3);
+    border-bottom: 1px solid var(--line);
+  }
+  .readout dd {
+    margin: 0;
+    padding: 8px 12px;
+    text-align: right;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    border-bottom: 1px solid var(--line);
+  }
+  .readout dt:last-of-type, .readout dd:last-of-type { border-bottom: 0; }
+
+  .save-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .btn-save {
+    flex: 1 1 auto;
+    padding: 13px 20px;
+    font-size: 13px; font-weight: 600; letter-spacing: .13em; text-transform: uppercase;
+    color: #FFF;
+    background: var(--bronze);
+    border: 1px solid var(--bronze);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background .15s ease, transform .1s ease;
+  }
+  .btn-save:hover { background: var(--gold); border-color: var(--gold); }
+  .btn-save:active { transform: translateY(1px); }
+  .btn-save[disabled] { opacity: .5; cursor: not-allowed; }
+  .save-note { margin: 0; font-size: 12px; color: var(--text-3); flex: 1 1 100%; }
+  .save-note:empty { display: none; }
+  .save-note[data-tone="err"] { color: var(--danger); }
+  .save-note[data-tone="ok"] { color: var(--ok); }
+  .save-note[data-tone="confirm"] { color: var(--danger); font-weight: 500; }
+
+  .warnbar {
+    margin: 0;
+    padding: 10px 13px;
+    font-size: 12.5px;
+    color: var(--warn);
+    background: var(--gold-soft);
+    border: 1px solid currentColor;
+    border-radius: 4px;
+  }
+  .blocker {
+    margin: 0;
+    padding: 14px;
+    font-size: 13.5px;
+    color: var(--danger);
+    background: var(--gold-soft);
+    border: 1px solid currentColor;
+    border-radius: 4px;
+  }
+
+  .colophon {
+    margin: 34px 0 0;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--text-3);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+
+<div class="shell">
+  <header class="masthead">
+    <svg class="finder-mark" viewBox="0 0 26 26" aria-hidden="true" fill="none">
+      <rect x="0.5" y="0.5" width="6" height="6" stroke="currentColor"></rect>
+      <rect x="2" y="2" width="3" height="3" fill="currentColor"></rect>
+      <rect x="19.5" y="0.5" width="6" height="6" stroke="currentColor"></rect>
+      <rect x="21" y="2" width="3" height="3" fill="currentColor"></rect>
+      <rect x="0.5" y="19.5" width="6" height="6" stroke="currentColor"></rect>
+      <rect x="2" y="21" width="3" height="3" fill="currentColor"></rect>
+      <rect x="10" y="2" width="2" height="2" fill="currentColor" opacity=".55"></rect>
+      <rect x="14" y="6" width="2" height="2" fill="currentColor" opacity=".35"></rect>
+      <rect x="10" y="10" width="2" height="2" fill="currentColor" opacity=".55"></rect>
+      <rect x="18" y="12" width="2" height="2" fill="currentColor" opacity=".35"></rect>
+      <rect x="22" y="16" width="2" height="2" fill="currentColor" opacity=".55"></rect>
+      <rect x="14" y="18" width="2" height="2" fill="currentColor" opacity=".35"></rect>
+      <rect x="6" y="14" width="2" height="2" fill="currentColor" opacity=".35"></rect>
+      <rect x="18" y="22" width="2" height="2" fill="currentColor" opacity=".55"></rect>
+    </svg>
+    <div>
+      <h1 class="wordmark">Generador QR <b>Versus</b></h1>
+      <p class="eyebrow">Pega el enlace, sube el logo y descarga el código</p>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <div class="rail">
+    <aside class="stage" aria-label="Resultado">
+      <p class="blocker" id="blocker" hidden></p>
+
+      <div class="plate">
+        <div class="qr-frame">
+          <canvas id="canvas" width="600" height="600" role="img"
+                  aria-label="Código QR generado"></canvas>
+        </div>
+      </div>
+
+      <p class="verdict" id="verdict" data-level="ok" aria-live="polite">
+        <span class="dot"></span>
+        <span id="verdict-text">Se escanea bien</span>
+        <span class="tail" id="verdict-tail"></span>
+      </p>
+
+      <p class="warnbar" id="warnbar" hidden></p>
+    </aside>
+
+    <div class="outputs">
+      <dl class="readout">
+        <dt>Tamaño de la imagen</dt><dd id="r-size">–</dd>
+        <dt>Tamaño al imprimir</dt><dd id="r-print">–</dd>
+      </dl>
+
+      <div class="save-row">
+        <button type="button" class="btn-save" id="save">Guardar PNG</button>
+        <p class="save-note" id="save-note" role="status"></p>
+      </div>
+    </div>
+    </div>
+
+    <section class="controls" aria-label="Ajustes">
+      <div class="field">
+        <label class="field-label" for="url"><span>Enlace</span></label>
+        <input id="url" type="url" inputmode="url" spellcheck="false"
+               value="https://versuselearning.com"
+               placeholder="https://ejemplo.com/campana">
+        <p class="hint">La página que se abrirá al escanear el código.</p>
+        <p class="field-msg" id="url-msg" role="status"></p>
+      </div>
+
+      <div class="field">
+        <span class="field-label"><span>Logo en el centro</span></span>
+        <label class="switch">
+          <input type="checkbox" id="logo-on">
+          <span class="track"></span>
+          <span class="switch-text" id="logo-on-text">Desactivado</span>
+        </label>
+        <p class="hint" id="logo-on-hint">Actívalo para poner el logo de tu academia en el centro del código.</p>
+      </div>
+
+      <div class="field" id="logo-fields" hidden>
+        <span class="field-label"><span>Imagen</span></span>
+        <div class="drop-row">
+          <button type="button" class="drop" id="drop">
+            <span class="thumb"><img id="thumb-img" alt=""></span>
+            <span class="drop-body">
+              <span class="drop-name" id="drop-name">Sin imagen</span>
+              <span class="drop-meta" id="drop-meta">Arrastra un archivo o haz clic</span>
+            </span>
+          </button>
+          <button type="button" class="drop-clear" id="drop-clear" hidden>Quitar</button>
+        </div>
+        <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" hidden>
+        <p class="field-msg" id="logo-msg" role="status"></p>
+
+        <div id="logo-extra" hidden>
+          <div class="range-wrap" style="margin-top:14px">
+            <label class="field-label" for="size"><span>Tamaño del logo</span></label>
+            <input type="range" id="size" min="10" max="45" step="0.5" value="25">
+            <div class="zone-legend" id="zone-legend">
+              <span><i style="background:var(--ok-fill)"></i>Seguro</span>
+              <span><i style="background:var(--warn-fill)"></i>Arriesgado</span>
+              <span><i style="background:var(--danger-fill)"></i>No se lee</span>
+            </div>
+            <p class="hint">Cuanto más corto es el enlace, más pequeño tiene que ser el logo para que el código siga leyéndose.</p>
+          </div>
+
+          <label class="switch" style="margin-top:16px">
+            <input type="checkbox" id="plate" checked>
+            <span class="track"></span>
+            <span class="switch-text">Recuadro blanco detrás del logo</span>
+          </label>
+          <p class="hint" style="margin-top:9px">Separa el logo del dibujo del código para que no se mezclen. Déjalo activado salvo que el logo ya traiga su propio fondo.</p>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="field-label"><span>Resolución</span></span>
+        <div class="seg" id="seg-size" role="group" aria-label="Resolución de salida">
+          <button type="button" data-px="600" aria-pressed="true">Normal</button>
+          <button type="button" data-px="900" aria-pressed="false">Grande</button>
+          <button type="button" data-px="1200" aria-pressed="false">Imprenta</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="field-label"><span>Formato</span></span>
+        <div class="seg" id="seg-fmt" role="group" aria-label="Formato de archivo">
+          <button type="button" data-fmt="png" aria-pressed="true">PNG</button>
+          <button type="button" data-fmt="jpg" aria-pressed="false">JPG</button>
+        </div>
+        <p class="hint" id="fmt-hint">PNG pesa mucho menos y sale más nítido. Es la opción recomendada.</p>
+      </div>
+    </section>
+  </main>
+
+  <p class="colophon">
+    Los códigos salen siempre en negro sobre blanco y con margen blanco alrededor: es lo que hace que
+    los lea cualquier móvil. Antes de mandar nada a imprenta, escanéalo tú con el teléfono.
+  </p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.5.2/qrcode.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // Measured codeword damage (% of total codewords) for a centred square occlusion
+  // at ECC H, by occlusion width as % of symbol width and QR version. Versions 1
+  // and 2 matter: a shortened link lands there, and damage per unit area rises
+  // sharply as the symbol shrinks — clamping them to the version-3 column reported
+  // roughly a third of the real damage.
+  var DAMAGE = {
+    20:   { 1: 19.2, 2: 13.6, 3: 11.4, 6:  9.9, 10:  6.9, 20:  6.1 },
+    25:   { 1: 19.2, 2: 22.7, 3: 20.0, 6: 14.0, 10:  9.8, 20:  8.3 },
+    30:   { 1: 34.6, 2: 22.7, 3: 21.4, 6: 16.3, 10: 13.0, 20: 10.7 },
+    32.5: { 1: 34.6, 2: 36.4, 3: 25.7, 6: 18.6, 10: 14.5, 20: 12.8 },
+    35:   { 1: 34.6, 2: 36.4, 3: 30.0, 6: 20.9, 10: 17.6, 20: 13.2 },
+    40:   { 1: 34.6, 2: 50.0, 3: 38.6, 6: 28.5, 10: 22.3, 20: 18.9 },
+    45:   { 1: 34.6, 2: 50.0, 3: 42.9, 6: 34.9, 10: 26.6, 20: 24.1 },
+    50:   { 1: 46.2, 2: 50.0, 3: 54.3, 6: 38.4, 10: 33.8, 20: 28.8 }
+  };
+  var WIDTHS = [20, 25, 30, 32.5, 35, 40, 45, 50];
+  var VERSIONS = [1, 2, 3, 6, 10, 20];
+  // Recoverable share at H really does vary by version, and it is lowest exactly
+  // where the logo hurts most, so use the measured value rather than one average.
+  var BUDGETS = { 1: 30.8, 2: 31.8, 3: 31.4, 6: 32.6, 10: 32.4, 20: 32.3 };
+  var QUIET = 4;          // modules of clear margin, per ISO/IEC 18004
+  var SAFE_SHARE = 0.6;   // share of the budget still called "seguro"
+  var MAX_UPLOAD = 5 * 1024 * 1024;
+  var LOGO_BOX = 320;     // uploads are normalised to this box before anything else
+  var STORE_KEY = "qr-versus-logo-v1";
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function pick(arr, v) {
+    if (v <= arr[0]) return [0, 0, 0];
+    if (v >= arr[arr.length - 1]) return [arr.length - 1, arr.length - 1, 0];
+    for (var i = 0; i < arr.length - 1; i++) {
+      if (v <= arr[i + 1]) return [i, i + 1, (v - arr[i]) / (arr[i + 1] - arr[i])];
+    }
+    return [arr.length - 1, arr.length - 1, 0];
+  }
+
+  // Bilinear over the measured table; below 20% width the damage falls roughly
+  // with the occluded area, so scale the 20% figure by (w/20)^2.
+  function damageFor(widthPct, version) {
+    var w = Math.max(1, Math.min(50, widthPct));
+    var scale = 1;
+    if (w < 20) { scale = (w / 20) * (w / 20); w = 20; }
+    var vi = pick(VERSIONS, version);
+    var wi = pick(WIDTHS, w);
+    var lo = DAMAGE[WIDTHS[wi[0]]], hi = DAMAGE[WIDTHS[wi[1]]];
+    var a = lerp(lo[VERSIONS[vi[0]]], lo[VERSIONS[vi[1]]], vi[2]);
+    var b = lerp(hi[VERSIONS[vi[0]]], hi[VERSIONS[vi[1]]], vi[2]);
+    return lerp(a, b, wi[2]) * scale;
+  }
+
+  function budgetFor(version) {
+    var vi = pick(VERSIONS, version);
+    return lerp(BUDGETS[VERSIONS[vi[0]]], BUDGETS[VERSIONS[vi[1]]], vi[2]);
+  }
+
+  function levelFor(ratio) {
+    if (ratio <= SAFE_SHARE) return "ok";
+    if (ratio <= 1.0) return "warn";
+    return "danger";
+  }
+
+  function capFor(version, budgetShare) {
+    var best = null;
+    for (var w = 10; w <= 45.01; w += 0.5) {
+      if (damageFor(w, version) / budgetFor(version) <= budgetShare) best = w; else break;
+    }
+    return best;
+  }
+
+  // Widest occlusion the symbol geometry allows before nearing the corner squares.
+  function maxPctFor(N) {
+    return Math.min(45, Math.floor((N - 16) / N * 1000) / 10);
+  }
+
+  var el = {};
+  ["url","url-msg","logo-on","logo-on-text","logo-on-hint","logo-fields","logo-extra","drop",
+   "thumb-img","drop-name","drop-meta","drop-clear","file","logo-msg","size","zone-legend",
+   "plate","seg-size","seg-fmt","fmt-hint","canvas","blocker","verdict","verdict-text",
+   "verdict-tail","warnbar","r-size","r-print","save","save-note"
+  ].forEach(function (id) { el[id] = document.getElementById(id); });
+
+  var state = {
+    text: el.url.value,
+    logoOn: false,
+    logoSrc: null,
+    logoName: "",
+    sizePct: 25,
+    plate: true,
+    targetPx: 600,
+    fmt: "png"
+  };
+
+  var logoImg = null;
+  var loadSeq = 0;                 // guards against a slow upload overwriting a newer one
+  var ctx = el.canvas.getContext("2d");
+  var downloadsApi = null;
+  var hasClaude = !!(window.claude && typeof window.claude.use === "function");
+  var libOk = (typeof qrcode === "function");
+  var dangerArmed = false;         // two-step confirm for saving an unreadable code
+
+  if (libOk && qrcode.stringToBytesFuncs && qrcode.stringToBytesFuncs["UTF-8"]) {
+    qrcode.stringToBytes = qrcode.stringToBytesFuncs["UTF-8"];
+  }
+
+  /* ---------------- messages ---------------- */
+
+  function msg(node, text, tone) {
+    node.textContent = text || "";
+    if (tone) node.setAttribute("data-tone", tone); else node.removeAttribute("data-tone");
+  }
+  function logoMsg(t, tone) { msg(el["logo-msg"], t, tone); }
+  function saveMsg(t, tone) { msg(el["save-note"], t, tone); }
+  function urlMsg(t, tone) { msg(el["url-msg"], t, tone); }
+
+  /* ---------------- image normalisation ----------------
+     Every upload is decoded and redrawn into a small PNG before it is used. That
+     one step fixes three separate problems at once: a 30 MB phone photo stops
+     living in memory, an SVG with only a viewBox (whose reported intrinsic size
+     differs per browser) gets a known pixel size, and the result is small enough
+     to keep in localStorage. */
+
+  function svgRatio(text) {
+    var m = /viewBox\s*=\s*["']\s*([-\d.eE]+)[,\s]+([-\d.eE]+)[,\s]+([-\d.eE]+)[,\s]+([-\d.eE]+)/.exec(text);
+    if (!m) return null;
+    var w = parseFloat(m[3]), h = parseFloat(m[4]);
+    if (!(w > 0) || !(h > 0)) return null;
+    return w / h;
+  }
+
+  function decodeImage(src, cb) {
+    var img = new Image();
+    var settled = false;
+    function ok() { if (!settled) { settled = true; cb(null, img); } }
+    function fail() { if (!settled) { settled = true; cb(new Error("decode")); } }
+    if (img.decode) {
+      img.src = src;
+      img.decode().then(ok).catch(function () {
+        // iOS Safari occasionally declines an SVG data URL on the first attempt.
+        setTimeout(function () {
+          if (settled) return;
+          var again = new Image();
+          again.onload = function () { if (!settled) { settled = true; cb(null, again); } };
+          again.onerror = fail;
+          again.src = src;
+        }, 60);
+      });
+    } else {
+      img.onload = ok;
+      img.onerror = fail;
+      img.src = src;
+    }
+  }
+
+  function normalise(file, cb) {
+    if (file.size > MAX_UPLOAD) {
+      cb(new Error("Esa imagen pesa más de 5 MB. Guárdala más pequeña e inténtalo otra vez."));
+      return;
+    }
+    var isSvg = /svg/i.test(file.type) || /\.svg$/i.test(file.name || "");
+
+    var reader = new FileReader();
+    reader.onerror = function () { cb(new Error("No se pudo leer el archivo.")); };
+    reader.onload = function () {
+      var src = String(reader.result);
+
+      function draw(ratio) {
+        decodeImage(src, function (err, img) {
+          if (err) {
+            cb(new Error("Este navegador no puede abrir esa imagen. Vuelve a guardarla como PNG o JPG."));
+            return;
+          }
+          var r = ratio;
+          if (!r) {
+            var iw = img.naturalWidth || img.width || 0;
+            var ih = img.naturalHeight || img.height || 0;
+            r = (iw > 0 && ih > 0) ? iw / ih : 1;
+          }
+          var w = LOGO_BOX, h = LOGO_BOX;
+          if (r >= 1) h = Math.max(1, Math.round(LOGO_BOX / r));
+          else w = Math.max(1, Math.round(LOGO_BOX * r));
+
+          var c = document.createElement("canvas");
+          c.width = w; c.height = h;
+          var cc = c.getContext("2d");
+          cc.imageSmoothingEnabled = true;
+          cc.imageSmoothingQuality = "high";
+          cc.drawImage(img, 0, 0, w, h);
+          var out;
+          try { out = c.toDataURL("image/png"); } catch (e) { out = null; }
+          if (!out) { cb(new Error("No se pudo procesar esa imagen. Prueba con un PNG o un JPG.")); return; }
+          cb(null, out);
+        });
+      }
+
+      if (isSvg) {
+        var t2 = new FileReader();
+        t2.onload = function () { draw(svgRatio(String(t2.result))); };
+        t2.onerror = function () { draw(null); };
+        t2.readAsText(file);
+      } else {
+        draw(null);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  /* ---------------- persistence ---------------- */
+
+  function remember() {
+    try {
+      if (state.logoSrc) {
+        localStorage.setItem(STORE_KEY, JSON.stringify({ name: state.logoName, src: state.logoSrc }));
+      } else {
+        localStorage.removeItem(STORE_KEY);
+      }
+    } catch (e) { /* private window, or storage full — not worth bothering anyone about */ }
+  }
+
+  function recall() {
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return null;
+      var o = JSON.parse(raw);
+      if (o && typeof o.src === "string" && o.src.indexOf("data:image/") === 0) return o;
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  /* ---------------- helpers ---------------- */
+
+  function printCm(modules, hasLogo) {
+    // 0.5 mm per module is the comfortable floor for a phone camera; a logo eats
+    // error-correction headroom, so ask for a bit more physical size when there is one.
+    var mm = hasLogo ? 0.6 : 0.5;
+    return ((modules + QUIET * 2) * mm / 10).toFixed(1).replace(".", ",");
+  }
+
+  function slug(text) {
+    var host = text;
+    try { host = new URL(text).hostname || text; } catch (e) {}
+    return (host.replace(/^www\./, "").toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "qr").slice(0, 48);
+  }
+
+  function setVerdict(level, text, tail) {
+    el.verdict.setAttribute("data-level", level);
+    el["verdict-text"].textContent = text;
+    el["verdict-tail"].textContent = tail || "";
+  }
+
+  function resetReadout() {
+    el["r-size"].textContent = "–";
+    el["r-print"].textContent = "–";
+  }
+
+  function updateZones(version, maxPct) {
+    var min = 10, span = maxPct - min;
+    if (span <= 0) span = 1;
+    var cOk = capFor(version, SAFE_SHARE);
+    var cWarn = capFor(version, 1.0);
+    function pos(v) { return v == null ? 0 : Math.max(0, Math.min(100, ((v - min) / span) * 100)); }
+    var a = pos(cOk), b = pos(cWarn);
+    el.size.style.setProperty("--zones",
+      "linear-gradient(90deg, var(--ok-fill) 0 " + a + "%, var(--warn-fill) " + a + "% " + b + "%, " +
+      "var(--danger-fill) " + b + "% 100%)");
+  }
+
+  function roundRect(c, x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+
+  function blocked(text) {
+    el.blocker.hidden = !text;
+    el.blocker.textContent = text || "";
+  }
+
+  /* ---------------- render ---------------- */
+
+  function render() {
+    saveMsg("");
+    dangerArmed = false;
+    el.save.textContent = "Guardar " + state.fmt.toUpperCase();
+
+    if (!libOk) {
+      blocked("No se pudo cargar el generador de códigos. Puede ser la conexión o que la red de tu oficina bloquee el servidor. Recarga la página; si sigue igual, avisa a Carlos.");
+      ctx.clearRect(0, 0, el.canvas.width, el.canvas.height);
+      resetReadout();
+      setVerdict("danger", "No disponible", "");
+      el.warnbar.hidden = true;
+      el.save.disabled = true;
+      return;
+    }
+    blocked("");
+
+    var text = state.text.trim();
+    if (!text) {
+      ctx.clearRect(0, 0, el.canvas.width, el.canvas.height);
+      resetReadout();
+      setVerdict("danger", "Falta el enlace", "");
+      el.warnbar.hidden = true;
+      el.save.disabled = true;
+      return;
+    }
+
+    var qr, N, version;
+    try {
+      qr = qrcode(0, "H");
+      qr.addData(text);
+      qr.make();
+      N = qr.getModuleCount();
+      version = (N - 17) / 4;
+    } catch (e) {
+      ctx.clearRect(0, 0, el.canvas.width, el.canvas.height);
+      resetReadout();
+      setVerdict("danger", "El enlace es demasiado largo", "");
+      el.warnbar.hidden = false;
+      el.warnbar.textContent = "No cabe tanto texto en un código QR. Acorta el enlace y vuelve a probar.";
+      el.save.disabled = true;
+      return;
+    }
+    el.save.disabled = false;
+
+    // The geometry caps how wide the logo may go; keep the whole slider useful.
+    var maxPct = maxPctFor(N);
+    if (Number(el.size.max) !== maxPct) el.size.max = String(maxPct);
+    if (state.sizePct > maxPct) { state.sizePct = maxPct; el.size.value = String(maxPct); }
+
+    var total = N + QUIET * 2;
+    var ppm = Math.max(1, Math.floor(state.targetPx / total));
+    var px = total * ppm;
+
+    el.canvas.width = px;
+    el.canvas.height = px;
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, px, px);
+    ctx.fillStyle = "#000000";
+    for (var r = 0; r < N; r++) {
+      for (var c = 0; c < N; c++) {
+        if (qr.isDark(r, c)) ctx.fillRect((QUIET + c) * ppm, (QUIET + r) * ppm, ppm, ppm);
+      }
+    }
+
+    var drawLogo = state.logoOn && !!logoImg;
+    var occludedPct = 0;
+
+    if (drawLogo) {
+      // Whole-pixel geometry, not whole-module: the plate follows the slider
+      // continuously. Decoders sample module centres, so an edge landing
+      // mid-module costs nothing extra.
+      var symbolPx = N * ppm;
+      var plateSide = Math.round(
+        Math.min(maxPct / 100 * symbolPx, Math.max(2 * ppm, symbolPx * state.sizePct / 100))
+      );
+      occludedPct = (plateSide / symbolPx) * 100;
+      var plateX = Math.round(QUIET * ppm + (symbolPx - plateSide) / 2);
+
+      if (state.plate) {
+        ctx.fillStyle = "#FFFFFF";
+        roundRect(ctx, plateX, plateX, plateSide, plateSide, Math.min(ppm * 1.2, plateSide * 0.12));
+        ctx.fill();
+      }
+
+      var pad = state.plate ? ppm : 0;
+      var box = Math.max(1, plateSide - pad * 2);
+      var boxX = plateX + pad;
+      var iw = logoImg.naturalWidth || logoImg.width || 1;
+      var ih = logoImg.naturalHeight || logoImg.height || 1;
+      var s = Math.min(box / iw, box / ih);
+      var dw = iw * s, dh = ih * s;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(logoImg, boxX + (box - dw) / 2, boxX + (box - dh) / 2, dw, dh);
+    }
+
+    el["r-size"].textContent = px + " × " + px + " px";
+    el["r-print"].textContent = printCm(N, drawLogo) + " cm o más";
+
+    var dmg = drawLogo ? damageFor(occludedPct, version) : 0;
+    var ratio = dmg / budgetFor(version);
+    var level = drawLogo ? levelFor(ratio) : "ok";
+
+    if (!drawLogo) {
+      setVerdict("ok", "Se escanea bien", "no hay logo que tape nada");
+    } else {
+      var labels = {
+        ok:     ["Se escanea bien", "con margen de sobra"],
+        warn:   ["Se escanea, pero justo", "baja el logo para ir seguro"],
+        danger: ["No se va a leer", "el logo tapa demasiado"]
+      };
+      setVerdict(level, labels[level][0], labels[level][1]);
+    }
+
+    var notes = [];
+    if (drawLogo && version <= 2) {
+      notes.push("Tu enlace es cortísimo, así que el código tiene muy pocas casillas y aguanta muy poco logo. Si puedes usar el enlace largo en vez del acortado, el código sale bastante más robusto.");
+    } else if (drawLogo && version === 3) {
+      notes.push("Tu enlace es corto, así que el código tiene pocas casillas y el logo se le come enseguida. Mantenlo pequeño.");
+    }
+    if (version >= 13 && state.targetPx <= 600) {
+      notes.push("Este código tiene mucho detalle. Si lo vas a imprimir pequeño, elige «Imprenta».");
+    }
+    el.warnbar.hidden = !notes.length;
+    if (notes.length) el.warnbar.textContent = notes[0];
+
+    updateZones(version, maxPct);
+  }
+
+  /* ---------------- logo plumbing ---------------- */
+
+  function applyLogo(src, name, cb) {
+    var seq = ++loadSeq;
+    decodeImage(src, function (err, img) {
+      if (seq !== loadSeq) return;            // a newer upload already won
+      if (err) { if (cb) cb(err); return; }
+      logoImg = img;
+      state.logoSrc = src;
+      state.logoName = name;
+      setThumb();
+      render();
+      if (cb) cb(null);
+    });
+  }
+
+  function clearLogo() {
+    loadSeq++;
+    logoImg = null;
+    state.logoSrc = null;
+    state.logoName = "";
+    setThumb();
+    remember();
+    render();
+  }
+
+  function setThumb() {
+    var has = !!state.logoSrc;
+    if (has) {
+      el["thumb-img"].src = state.logoSrc;
+      el["thumb-img"].alt = "";
+    } else {
+      el["thumb-img"].removeAttribute("src");
+      el["thumb-img"].alt = "";
+    }
+    el["drop-name"].textContent = has ? state.logoName : "Sin imagen";
+    el["drop-meta"].textContent = has ? "Toca para cambiarla" : "Arrastra un archivo o haz clic";
+    el["drop-clear"].hidden = !has;
+    el["logo-extra"].hidden = !has;      // no image, no size or plate controls
+  }
+
+  function acceptFile(file) {
+    if (!file) return;
+    logoMsg("Abriendo la imagen…");
+    normalise(file, function (err, src) {
+      if (err) { logoMsg(err.message, "err"); return; }
+      applyLogo(src, file.name || "logo", function (err2) {
+        if (err2) {
+          logoMsg("Este navegador no puede abrir esa imagen. Vuelve a guardarla como PNG o JPG.", "err");
+          return;
+        }
+        logoMsg("");
+        remember();
+      });
+    });
+  }
+
+  function syncLogoToggle() {
+    el["logo-on-text"].textContent = state.logoOn ? "Activado" : "Desactivado";
+    el["logo-fields"].hidden = !state.logoOn;
+    el["logo-on-hint"].hidden = state.logoOn;
+  }
+
+  /* ---------------- events ---------------- */
+
+  el.url.addEventListener("input", function () {
+    state.text = el.url.value;
+    urlMsg("");
+    render();
+  });
+  el.url.addEventListener("blur", function () {
+    var v = el.url.value.trim();
+    if (!v) return;
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(v) && /^[\w-]+(\.[\w-]+)+([/?#].*)?$/.test(v)) {
+      el.url.value = "https://" + v;
+      state.text = el.url.value;
+      render();
+      return;
+    }
+    // Plain text still makes a valid code, it just will not open anything.
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(v) && !/^[\w-]+(\.[\w-]+)+/.test(v)) {
+      urlMsg("Esto no parece un enlace. El código se creará con este texto tal cual, y al escanearlo no abrirá ninguna página.");
+    }
+  });
+
+  el["logo-on"].addEventListener("change", function () {
+    state.logoOn = el["logo-on"].checked;
+    syncLogoToggle();
+    render();
+    if (state.logoOn && !state.logoSrc) el.file.click();
+  });
+
+  el.plate.addEventListener("change", function () { state.plate = el.plate.checked; render(); });
+
+  el.size.addEventListener("input", function () {
+    state.sizePct = Number(el.size.value);
+    render();
+  });
+
+  el.drop.addEventListener("click", function () { el.file.click(); });
+  el["drop-clear"].addEventListener("click", function () {
+    clearLogo();
+    logoMsg("");
+    el.drop.focus();
+  });
+
+  ["dragenter", "dragover"].forEach(function (t) {
+    el.drop.addEventListener(t, function (e) { e.preventDefault(); el.drop.classList.add("over"); });
+  });
+  ["dragleave", "drop"].forEach(function (t) {
+    el.drop.addEventListener(t, function () { el.drop.classList.remove("over"); });
+  });
+  el.drop.addEventListener("drop", function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) acceptFile(e.dataTransfer.files[0]);
+  });
+  // Missing the drop target must not navigate away and throw the work out.
+  window.addEventListener("dragover", function (e) { e.preventDefault(); });
+  window.addEventListener("drop", function (e) { e.preventDefault(); });
+
+  el.file.addEventListener("change", function () {
+    acceptFile(el.file.files && el.file.files[0]);
+    el.file.value = "";
+  });
+
+  function segHandler(container, apply) {
+    container.addEventListener("click", function (e) {
+      var b = e.target.closest("button");
+      if (!b || !container.contains(b)) return;
+      Array.prototype.forEach.call(container.querySelectorAll("button"), function (x) {
+        x.setAttribute("aria-pressed", String(x === b));
+      });
+      apply(b);
+      render();
+    });
+  }
+  segHandler(el["seg-size"], function (b) { state.targetPx = Number(b.dataset.px); });
+  segHandler(el["seg-fmt"], function (b) {
+    state.fmt = b.dataset.fmt;
+    el["fmt-hint"].textContent = state.fmt === "png"
+      ? "PNG pesa mucho menos y sale más nítido. Es la opción recomendada."
+      : "JPG se lee igual de bien, pero el archivo pesa bastante más. Elígelo solo si te lo piden así.";
+  });
+
+  /* ---------------- save ---------------- */
+
+  var LONG_PRESS = "Para guardarlo: en el ordenador, clic derecho sobre el código y «Guardar imagen como…»; en el móvil, mantén el dedo pulsado sobre el código.";
+
+  if (hasClaude) {
+    window.claude.use("downloads").then(function (d) {
+      downloadsApi = d;
+      if (!d) saveMsg(LONG_PRESS);
+    }).catch(function () {
+      saveMsg(LONG_PRESS);
+    });
+  }
+
+  el.save.addEventListener("click", function () {
+    if (el.verdict.getAttribute("data-level") === "danger" && !dangerArmed) {
+      dangerArmed = true;
+      saveMsg("Este código no se va a poder leer. Pulsa otra vez si quieres guardarlo igualmente.", "confirm");
+      return;
+    }
+
+    var mime = state.fmt === "png" ? "image/png" : "image/jpeg";
+    var ext = state.fmt === "png" ? "png" : "jpg";
+    var filename = "qr-" + slug(state.text.trim()) + "." + ext;
+
+    el.canvas.toBlob(function (blob) {
+      if (!blob) { saveMsg("No se pudo generar el archivo. Recarga la página e inténtalo otra vez.", "err"); return; }
+
+      if (downloadsApi) {
+        downloadsApi.save({ filename: filename, data: blob }).then(function () {
+          saveMsg("Guardado como " + filename, "ok");
+        }).catch(function (err) {
+          var code = err && err.code;
+          if (code === "declined") { saveMsg("Guardado cancelado."); return; }
+          if (code === "rate_limited") { saveMsg("Espera un momento y vuelve a intentarlo.", "err"); return; }
+          saveMsg("No se pudo guardar. " + LONG_PRESS, "err");
+        });
+        return;
+      }
+
+      if (hasClaude) { saveMsg(LONG_PRESS); return; }
+
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      saveMsg("Si no aparece la descarga: " + LONG_PRESS);
+    }, mime, 0.95);
+  });
+
+  /* ---------------- boot ---------------- */
+
+  var saved = recall();
+  if (saved) {
+    state.logoOn = true;
+    el["logo-on"].checked = true;
+    applyLogo(saved.src, saved.name || "tu logo", function (err) {
+      if (err) { try { localStorage.removeItem(STORE_KEY); } catch (e) {} clearLogo(); }
+    });
+  }
+  syncLogoToggle();
+  setThumb();
+  render();
+})();
+</script>

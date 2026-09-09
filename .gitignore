@@ -1,0 +1,11 @@
+# Entorno virtual de Python (256 MB, no debe viajar al repositorio)
+.venv/
+
+# Cache de bytecode de Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Nota deliberada: output/ NO se ignora.
+# Son los QR generados de cada campana y estan versionados a proposito, como
+# registro de lo que se ha mandado a imprenta. Ocupan menos de 2 MB en total.
