@@ -42,6 +42,8 @@ DEPLOY_DIR = os.path.join(HERE, "deploy")
 # hay PHP y la CSP bloquearia la peticion, asi que alli la marca se queda en null.
 MARCA_HISTORICO = "var HISTORICO_URL = null;"
 RUTA_HISTORICO = 'var HISTORICO_URL = "registrar.php";'
+MARCA_LISTA = "var HISTORICO_LISTA = null;"
+RUTA_LISTA = 'var HISTORICO_LISTA = "historico.php";'
 
 
 # Elementos que pertenecen a <head>. Se consumen desde el principio del archivo
@@ -106,6 +108,14 @@ def render(src: str) -> str:
             % MARCA_HISTORICO
         )
     body = body.replace(MARCA_HISTORICO, RUTA_HISTORICO, 1)
+
+    if MARCA_LISTA not in body:
+        raise SystemExit(
+            "ERROR: no encontre la marca de la lista del historico (%s) en "
+            "web/index.html.\nSi se renombro la variable, actualiza MARCA_LISTA "
+            "en este script." % MARCA_LISTA
+        )
+    body = body.replace(MARCA_LISTA, RUTA_LISTA, 1)
 
     digest = hashlib.sha256(src.encode("utf-8")).hexdigest()[:12]
     return (
@@ -172,7 +182,7 @@ def main():
     # alguno se PARA: dar el despliegue por bueno sin el .htaccess dejaria el
     # historico, con las URL de todas las campanas, legible desde el navegador.
     copiados = []
-    for nombre in ("registrar.php", ".htaccess"):
+    for nombre in ("registrar.php", "historico.php", ".htaccess"):
         origen = os.path.join(DEPLOY_DIR, nombre)
         if not os.path.exists(origen):
             raise SystemExit(

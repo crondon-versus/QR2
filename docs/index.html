@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- GENERADO AUTOMATICAMENTE. No editar este archivo.
-     Fuente: web/index.html (sha256:4902ffcb908a)
+     Fuente: web/index.html (sha256:b51c4c7426b6)
      Regenerar con: python web/build.py -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -450,6 +450,56 @@
     border-radius: 4px;
   }
 
+  /* ---------- pestanas y tabla del historico ---------- */
+  .tabs {
+    display: flex;
+    gap: 2px;
+    margin-top: 18px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tabs button {
+    padding: 11px 16px;
+    font-family: "Jost", "Century Gothic", sans-serif;
+    font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--text-3);
+    background: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    cursor: pointer;
+  }
+  .tabs button:hover { color: var(--text); }
+  .tabs button[aria-pressed="true"] { color: var(--text); border-bottom-color: var(--gold); }
+
+  .panel-hist { padding-top: 24px; display: flex; flex-direction: column; gap: 14px; }
+  .hist-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .hist-count { margin: 0; flex: 1 1 auto; font-size: 12.5px; color: var(--text-3); }
+  .hist-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+  }
+  table.hist { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.hist th {
+    text-align: left;
+    padding: 9px 12px;
+    font-family: "Jost", "Century Gothic", sans-serif;
+    font-size: 10.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--text-3);
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  table.hist td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.hist tr:last-child td { border-bottom: 0; }
+  table.hist td.fecha {
+    font-family: "Roboto Mono", ui-monospace, monospace;
+    font-size: 12px; white-space: nowrap; color: var(--text-2);
+  }
+  table.hist td.enlace { word-break: break-all; min-width: 220px; }
+  table.hist td.enlace a { color: var(--bronze); }
+  table.hist td.enlace a:hover { color: var(--gold); }
+
   .colophon {
     margin: 34px 0 0;
     padding-top: 16px;
@@ -598,7 +648,12 @@
     </div>
   </header>
 
-  <main class="workspace">
+  <nav class="tabs" id="tabs" hidden aria-label="Secciones">
+    <button type="button" id="tab-gen" aria-pressed="true">Generar</button>
+    <button type="button" id="tab-hist" aria-pressed="false">Histórico</button>
+  </nav>
+
+  <main class="workspace" id="panel-gen">
     <div class="rail">
     <aside class="stage" aria-label="Resultado">
       <p class="blocker" id="blocker" hidden></p>
@@ -638,7 +693,6 @@
         <input id="url" type="url" inputmode="url" spellcheck="false"
                value="https://versuselearning.com"
                placeholder="https://ejemplo.com/campana">
-        <p class="hint">La página que se abrirá al escanear el código.</p>
         <p class="field-msg" id="url-msg" role="status"></p>
       </div>
 
@@ -676,7 +730,6 @@
               <span><i style="background:var(--warn-fill)"></i>Arriesgado</span>
               <span><i style="background:var(--danger-fill)"></i>No se lee</span>
             </div>
-            <p class="hint">Cuanto más corto es el enlace, más pequeño tiene que ser el logo para que el código siga leyéndose.</p>
           </div>
 
           <label class="switch" style="margin-top:16px">
@@ -684,7 +737,6 @@
             <span class="track"></span>
             <span class="switch-text">Recuadro blanco detrás del logo</span>
           </label>
-          <p class="hint" style="margin-top:9px">Separa el logo del dibujo del código para que no se mezclen. Déjalo activado salvo que el logo ya traiga su propio fondo.</p>
         </div>
       </div>
 
@@ -692,7 +744,7 @@
         <label class="field-label" for="quien"><span>Quién lo hace</span></label>
         <input type="text" id="quien" autocomplete="name" spellcheck="false"
                placeholder="Tu nombre">
-        <p class="hint">Solo se usa para el histórico compartido, para saber quién generó cada código. Se recuerda en este navegador.</p>
+        <p class="hint">Para registrar internamente cada código que se genera y llevar el seguimiento.</p>
       </div>
 
       <div class="field">
@@ -715,10 +767,26 @@
     </section>
   </main>
 
+  <section class="panel-hist" id="panel-hist" hidden aria-label="Histórico">
+    <div class="hist-head">
+      <p class="hist-count" id="hist-count">Cargando…</p>
+      <button type="button" class="drop-clear" id="hist-refresh">Actualizar</button>
+      <button type="button" class="drop-clear" id="hist-csv">Descargar CSV</button>
+    </div>
+    <div class="hist-wrap">
+      <table class="hist">
+        <thead>
+          <tr>
+            <th>Fecha</th><th>Enlace</th><th>Quién</th><th>Logo</th><th>Tamaño</th>
+          </tr>
+        </thead>
+        <tbody id="hist-body"></tbody>
+      </table>
+    </div>
+    <p class="field-msg" id="hist-msg" role="status"></p>
+  </section>
+
   <p class="colophon">
-    Los códigos salen siempre en negro sobre blanco y con margen blanco alrededor: es lo que hace que
-    los lea cualquier móvil. Antes de mandar nada a imprenta, escanéalo tú con el teléfono.
-    <br>
     <button type="button" class="logout" id="logout">Salir</button>
   </p>
 </div>
@@ -841,6 +909,7 @@
   // build.py lo sustituye por la ruta real al generar docs/. En el artifact se
   // queda en null: alli no existe el PHP y la CSP bloquearia la peticion.
   var HISTORICO_URL = "registrar.php";
+  var HISTORICO_LISTA = "historico.php";
   // Tener la ruta no basta: en un hosting estatico el PHP no se ejecuta, se sirve
   // como archivo. Se confirma con una peticion antes de prometer nada.
   var historicoVivo = false;
@@ -898,7 +967,9 @@
   ["url","url-msg","quien","quien-field","logo-on","logo-on-text","logo-on-hint","logo-fields","logo-extra","drop",
    "thumb-img","drop-name","drop-meta","drop-clear","file","logo-msg","size","zone-legend",
    "plate","seg-size","seg-fmt","fmt-hint","canvas","blocker","verdict","verdict-text",
-   "verdict-tail","warnbar","r-size","r-print","save","save-note"
+   "verdict-tail","warnbar","r-size","r-print","save","save-note",
+   "tabs","tab-gen","tab-hist","panel-gen","panel-hist","hist-count","hist-refresh",
+   "hist-csv","hist-body","hist-msg"
   ].forEach(function (id) { el[id] = document.getElementById(id); });
 
   var state = {
@@ -1089,12 +1160,101 @@
                     + "hay que archivar el CSV.", "err");
           } else if (!r.ok) {
             saveMsg(base + " · Este código no se ha podido apuntar en el histórico.", "err");
+          } else if (el["panel-hist"] && !el["panel-hist"].hidden) {
+            cargarHistorico();   // la pestana esta abierta: que se vea al instante
           }
         })
         .catch(function () {
           saveMsg(base + " · Este código no se ha podido apuntar en el histórico.", "err");
         });
     } catch (e) {}
+  }
+
+  /* ---------------- historico: pestana y tabla ---------------- */
+
+  var histTimer = null;
+
+  function celdaHist(texto, clase) {
+    var td = document.createElement("td");
+    if (clase) td.className = clase;
+    // textContent, NUNCA innerHTML: estas filas las escriben las personas que usan
+    // la herramienta, asi que son texto ajeno y no pueden interpretarse como HTML.
+    td.textContent = texto || "—";
+    return td;
+  }
+
+  function pintarHistorico(d) {
+    var body = el["hist-body"];
+    while (body.firstChild) body.removeChild(body.firstChild);
+
+    if (!d.filas || !d.filas.length) {
+      el["hist-count"].textContent = "Todavía no se ha guardado ningún código.";
+      return;
+    }
+    el["hist-count"].textContent = (d.mostradas < d.total)
+      ? "Los " + d.mostradas + " más recientes, de " + d.total + " en total"
+      : d.total + (d.total === 1 ? " código guardado" : " códigos guardados");
+
+    d.filas.forEach(function (f) {
+      var tr = document.createElement("tr");
+      tr.appendChild(celdaHist(f.fecha, "fecha"));
+
+      var td = document.createElement("td");
+      td.className = "enlace";
+      // Solo se convierte en enlace si es http(s). Sin esta comprobacion, un
+      // "javascript:..." guardado en el CSV se volveria ejecutable al pulsarlo.
+      if (/^https?:\/\//i.test(f.url)) {
+        var a = document.createElement("a");
+        a.href = f.url;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.textContent = f.url;
+        td.appendChild(a);
+      } else {
+        td.textContent = f.url;
+      }
+      tr.appendChild(td);
+
+      tr.appendChild(celdaHist(f.quien));
+      tr.appendChild(celdaHist(f.logo));
+      tr.appendChild(celdaHist(f.tamano));
+      body.appendChild(tr);
+    });
+  }
+
+  function cargarHistorico() {
+    if (!HISTORICO_LISTA) return;
+    fetch(HISTORICO_LISTA, { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !d.ok) {
+          msg(el["hist-msg"], "No se pudo leer el histórico. Inténtalo otra vez.", "err");
+          return;
+        }
+        msg(el["hist-msg"], "");
+        pintarHistorico(d);
+      })
+      .catch(function () {
+        msg(el["hist-msg"], "No se pudo leer el histórico. Revisa la conexión.", "err");
+      });
+  }
+
+  function mostrarPanel(cual) {
+    var hist = (cual === "hist");
+    el["panel-gen"].hidden = hist;
+    el["panel-hist"].hidden = !hist;
+    el["tab-gen"].setAttribute("aria-pressed", String(!hist));
+    el["tab-hist"].setAttribute("aria-pressed", String(hist));
+
+    if (hist) {
+      cargarHistorico();
+      // Mientras la pestana este abierta se relee cada 20 segundos, para que
+      // aparezca lo que guardan los demas sin recargar la pagina.
+      if (!histTimer) histTimer = setInterval(cargarHistorico, 20000);
+    } else if (histTimer) {
+      clearInterval(histTimer);
+      histTimer = null;
+    }
   }
 
   function slug(text) {
@@ -1426,6 +1586,13 @@
       : "JPG se lee igual de bien, pero el archivo pesa bastante más. Elígelo solo si te lo piden así.";
   });
 
+  el["tab-gen"].addEventListener("click", function () { mostrarPanel("gen"); });
+  el["tab-hist"].addEventListener("click", function () { mostrarPanel("hist"); });
+  el["hist-refresh"].addEventListener("click", cargarHistorico);
+  el["hist-csv"].addEventListener("click", function () {
+    if (HISTORICO_LISTA) window.location.href = HISTORICO_LISTA + "?descargar=1";
+  });
+
   /* ---------------- save ---------------- */
 
   var LONG_PRESS = "Para guardarlo: en el ordenador, clic derecho sobre el código y «Guardar imagen como…»; en el móvil, mantén el dedo pulsado sobre el código.";
@@ -1494,7 +1661,10 @@
     try {
       fetch(HISTORICO_URL, { method: "GET" }).then(function (r) {
         historicoVivo = (r.status === 405);
-        if (historicoVivo && el["quien-field"]) el["quien-field"].hidden = false;
+        if (historicoVivo) {
+          if (el["quien-field"]) el["quien-field"].hidden = false;
+          if (el.tabs) el.tabs.hidden = false;
+        }
       }).catch(function () {});
     } catch (e) {}
   }
