@@ -9,3 +9,8 @@ __pycache__/
 # Nota deliberada: output/ NO se ignora.
 # Son los QR generados de cada campana y estan versionados a proposito, como
 # registro de lo que se ha mandado a imprenta. Ocupan menos de 2 MB en total.
+
+# El historico del generador son datos de campanas (URL, quien y cuando), no
+# codigo: se queda en el servidor y se descarga por FTP. Nunca al repositorio.
+historico.csv
+docs/historico.csv
