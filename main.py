@@ -19,6 +19,24 @@ from config import (
 
 IMAGE_EXTS = ("png", "jpg", "jpeg", "webp", "gif", "bmp")
 
+# Las rutas se ancoran al archivo del programa, no a la carpeta desde la que se
+# ejecuta. Sin esto, lanzarlo desde un acceso directo o desde una terminal abierta
+# en otro sitio decia "no hay ninguna imagen en la carpeta assets/" teniendo los
+# dos logos delante, y el PNG aparecia en un output/ creado en cualquier carpeta.
+AQUI = os.path.dirname(os.path.abspath(__file__))
+
+# Tope del logo. No es un numero a ojo: por encima del 30% del ancho del simbolo
+# hay versiones cuyos codigos NINGUN lector consigue leer, con correccion H y
+# logos reales, mientras el programa cantaba exito. Se barrio de la version 1 a la
+# 25 con los dos logos de assets/, decodificando con zxing-cpp y OpenCV, y 30 es el
+# ultimo valor que paso el 100%.
+LOGO_PCT_MIN = 10.0
+LOGO_PCT_MAX = 30.0
+
+# Limite real de caracteres con correccion de errores H (no los 2953 de un QR
+# normal: se llega mucho antes de lo que parece).
+MAX_CARACTERES = 1273
+
 
 def ensure_output_dir(path: str) -> None:
     """Crea la carpeta de salida si no existe."""
@@ -29,10 +47,10 @@ def available_logos() -> str:
     """Lista las imágenes que hay en assets/, para que el error sea útil."""
     found = []
     for ext in IMAGE_EXTS:
-        found.extend(glob.glob(os.path.join("assets", "*." + ext)))
+        found.extend(glob.glob(os.path.join(AQUI, "assets", "*." + ext)))
     if not found:
-        return "No hay ninguna imagen en la carpeta assets/."
-    return "Imágenes disponibles en assets/:\n" + "\n".join("  --logo \"%s\"" % f for f in sorted(found))
+        return "No hay ninguna imagen en %s." % os.path.join(AQUI, "assets")
+    return "Imágenes disponibles:\n" + "\n".join("  --logo \"%s\"" % f for f in sorted(found))
 
 
 def open_logo(path: str) -> Image.Image:
@@ -81,19 +99,33 @@ def generate_qr_with_logo(
         box_size=BOX_SIZE,
         border=BORDER,
     )
-    qr.add_data(data)
-    qr.make(fit=True)
+    try:
+        qr.add_data(data)
+        qr.make(fit=True)
+    except Exception:
+        # Sin esto salia un traceback de Python en ingles, que a quien no es tecnico
+        # no le dice ni que ha pasado ni que la solucion es acortar el enlace.
+        raise SystemExit(
+            "ERROR: el enlace es demasiado largo para un codigo QR: tiene %d "
+            "caracteres y el maximo con correccion de errores H son %d.\n"
+            "Acortalo con un acortador de enlaces." % (len(data), MAX_CARACTERES)
+        )
     modules = qr.modules_count
 
     img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
 
     if not logo_path:
-        return img, modules
+        return img, modules, 0.0
 
     logo = open_logo(logo_path)
 
     symbol_px = modules * BOX_SIZE
     plate_px = int(round(symbol_px * logo_pct / 100.0))
+
+    # El tope geometrico mantiene la plancha lejos de los tres cuadrados de
+    # deteccion y de los patrones de sincronizacion. Se aplica AQUI, antes de
+    # derivar el resto, para que todo lo que venga despues se calcule sobre el
+    # tamano real y no sobre el pedido.
     plate_px = max(BOX_SIZE, min(plate_px, (modules - 16) * BOX_SIZE))
 
     # El símbolo está centrado en la imagen, así que el centro de la imagen sirve.
@@ -106,7 +138,10 @@ def generate_qr_with_logo(
             draw.rounded_rectangle(box, radius=max(1, min(BOX_SIZE, plate_px // 8)), fill="white")
         except AttributeError:      # Pillow anterior a 8.2
             draw.rectangle(box, fill="white")
-        pad = BOX_SIZE
+        # El margen es proporcional, no un modulo fijo. Con un modulo fijo, en
+        # cuanto el tope bajaba la plancha a 10 px los dos margenes de 10 px se la
+        # comian entera y el logo quedaba en 1 pixel: una mancha blanca sin logo.
+        pad = min(BOX_SIZE, plate_px // 6)
     else:
         pad = 0
 
@@ -124,7 +159,7 @@ def generate_qr_with_logo(
     pos = (off + (plate_px - new_w) // 2, off + (plate_px - new_h) // 2)
     img.paste(logo, pos, mask=logo)
 
-    return img, modules
+    return img, modules, plate_px / float(symbol_px) * 100.0
 
 
 def save_qr_image(img: Image.Image, output_path: str, output_format: str) -> str:
@@ -136,7 +171,7 @@ def save_qr_image(img: Image.Image, output_path: str, output_format: str) -> str
     rgb_img = img.convert("RGB")
 
     if output_format in ("jpg", "jpeg"):
-        if not output_path.lower().endswith(".jpg"):
+        if not output_path.lower().endswith((".jpg", ".jpeg")):
             output_path += ".jpg"
         # subsampling=0 fuerza 4:4:4. Sin él, libjpeg usa 4:2:0 y aparecen flecos
         # de color alrededor de un logo de color.
@@ -179,7 +214,7 @@ def parse_args() -> argparse.Namespace:
         "--logo-size",
         type=float,
         default=25.0,
-        help="Tamaño del logo como %% del ancho del código (10-45). Por defecto 25.",
+        help="Tamaño del logo como %% del ancho del código (10-30). Por defecto 25.",
     )
     parser.add_argument(
         "--no-plate",
@@ -221,9 +256,11 @@ def main():
     if not url:
         raise SystemExit("ERROR: --url está vacío. Un QR sin destino no sirve de nada.")
 
-    if not 10.0 <= args.logo_size <= 45.0:
+    if not LOGO_PCT_MIN <= args.logo_size <= LOGO_PCT_MAX:
         raise SystemExit(
-            "ERROR: --logo-size debe estar entre 10 y 45 (has puesto %s)." % args.logo_size
+            "ERROR: --logo-size debe estar entre %g y %g (has puesto %s).\n"
+            "Por encima de %g el logo tapa tanto que hay codigos que ningun lector "
+            "consigue leer." % (LOGO_PCT_MIN, LOGO_PCT_MAX, args.logo_size, LOGO_PCT_MAX)
         )
 
     if args.no_logo:
@@ -245,7 +282,7 @@ def main():
         )
 
     print("Generando código QR %s logo..." % ("sin" if logo_path is None else "con"))
-    qr_img, modules = generate_qr_with_logo(
+    qr_img, modules, pct_real = generate_qr_with_logo(
         url,
         logo_path=logo_path,
         logo_pct=args.logo_size,
@@ -253,6 +290,15 @@ def main():
     )
 
     version = (modules - 17) // 4
+
+    # Si el tope geometrico recorto lo que se pidio, decirlo. Antes se aplicaba en
+    # silencio: con un enlace corto, --logo-size 25 y 30 daban el MISMO archivo y
+    # nada lo indicaba.
+    if logo_path and pct_real and abs(pct_real - args.logo_size) > 0.5:
+        print(
+            "AVISO: con este enlace el maximo que cabe es %.0f%%, asi que se ha "
+            "usado ese en vez del %g que pediste." % (pct_real, args.logo_size)
+        )
     if logo_path and version <= 2:
         print(
             "AVISO: tu enlace es cortísimo, así que el código sale en versión %d "

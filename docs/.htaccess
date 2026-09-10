@@ -1,6 +1,18 @@
-# El historico contiene las URL de todas las campanas: no debe poder leerse
-# desde la web. Se descarga por FTP.
-<Files "historico.csv">
+# El historico contiene las URL de todas las campanas: no debe poder leerse desde
+# la web. Se descarga por FTP.
+#
+# Se deniega *.csv en lugar de un nombre concreto, para que renombrar o archivar el
+# historico no deje el nuevo archivo desprotegido por descuido.
+#
+# AVISO IMPORTANTE: esta proteccion depende de que el servidor sea Apache y de que
+# tenga AllowOverride activado. Si el hosting usa nginx, o ignora los .htaccess, el
+# CSV queda accesible desde el navegador. COMPRUEBALO despues de subir: abre
+# https://tu-dominio/la-carpeta/historico.csv en el navegador. Si te lo descarga, la
+# proteccion no esta aplicando y hay que pedir al hosting que proteja la carpeta con
+# .htpasswd, que es lo unico que no depende de esto.
+# El (?i) es necesario: sin el la comparacion distingue mayusculas y un archivo
+# guardado como .CSV se colaria, que era justo el caso que esto quiere cubrir.
+<FilesMatch "(?i)\.csv$">
     <IfModule mod_authz_core.c>
         Require all denied
     </IfModule>
@@ -8,7 +20,7 @@
         Order allow,deny
         Deny from all
     </IfModule>
-</Files>
+</FilesMatch>
 
 # Los acentos de la pagina, por si el servidor no manda la cabecera.
 <IfModule mod_mime.c>

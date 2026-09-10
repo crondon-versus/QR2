@@ -101,7 +101,7 @@
   .wordmark, .eyebrow, .field-label, .seg button, .verdict, .readout dt, .btn-save {
     font-family: "Jost", "Century Gothic", "Roboto", sans-serif;
   }
-  .mono, .readout dd, .num { font-family: "Roboto Mono", ui-monospace, monospace; }
+  .readout dd { font-family: "Roboto Mono", ui-monospace, monospace; }
 
   .shell { max-width: 1120px; margin: 0 auto; padding: 28px 22px 56px; }
 
@@ -454,8 +454,11 @@
      proposito NO con una clase en <html>: ese elemento lo comparte la pagina con su
      anfitrion (el visor de artifacts escribe ahi para el tema), asi que sobrescribir
      sus clases hacia que la aplicacion no llegara a aparecer nunca.
-     Los dos empiezan con hidden en el marcado; el script del final revela uno.
-     Sin JavaScript no se revela ninguno y salta <noscript>. */
+     Reparto deliberado: .gate arranca VISIBLE y solo .shell lleva hidden. Asi, si
+     los scripts no llegan a ejecutarse (JavaScript desactivado, un filtro que quita
+     el codigo en linea), se ve la pantalla de acceso y el <noscript>, en vez de una
+     pagina completamente en blanco, que es el fallo menos diagnosticable posible.
+     NO poner hidden en .gate: eso reintroduce exactamente ese fallo. */
   .gate {
     display: flex;
     min-height: 100vh;
@@ -828,6 +831,9 @@
   // build.py lo sustituye por la ruta real al generar docs/. En el artifact se
   // queda en null: alli no existe el PHP y la CSP bloquearia la peticion.
   var HISTORICO_URL = null;
+  // Tener la ruta no basta: en un hosting estatico el PHP no se ejecuta, se sirve
+  // como archivo. Se confirma con una peticion antes de prometer nada.
+  var historicoVivo = false;
 
   function lerp(a, b, t) { return a + (b - a) * t; }
 
@@ -1044,8 +1050,17 @@
   // Anade una linea al historico compartido. Nunca debe estorbar: si falla, falla
   // en silencio, porque perder una linea del historico no es motivo para que
   // alguien se quede sin su codigo.
-  function registrar() {
-    if (!HISTORICO_URL) return;
+  // El texto del aviso y el testigo de confirmacion son un mismo estado, asi que se
+  // limpian juntos. Limpiar solo el texto dejaba armada la confirmacion de "no se
+  // va a leer" sin el aviso visible, y el siguiente Guardar se saltaba la advertencia.
+  function clearSaveNote() {
+    saveMsg("");
+    dangerArmed = false;
+  }
+
+  function registrar(base) {
+    if (!HISTORICO_URL || !historicoVivo) return;
+    base = base || "Guardado.";
     try {
       var body = new URLSearchParams();
       body.set("url", state.text.trim());
@@ -1054,8 +1069,21 @@
       body.set("tamano", el["r-size"].textContent);
       body.set("formato", state.fmt);
       body.set("veredicto", el["verdict-text"].textContent);
+      // El aviso se AnADE al mensaje que ya esta puesto, nunca lo sustituye: el
+      // codigo ya se guardo bien, y pisar ese texto (o la ayuda de "manten
+      // pulsado") por un problema del historico seria peor que el problema.
       fetch(HISTORICO_URL, { method: "POST", body: body, keepalive: true })
-        .catch(function () {});
+        .then(function (r) {
+          if (r.status === 507) {
+            saveMsg(base + " · El histórico está lleno y ha dejado de registrar: "
+                    + "hay que archivar el CSV.", "err");
+          } else if (!r.ok) {
+            saveMsg(base + " · Este código no se ha podido apuntar en el histórico.", "err");
+          }
+        })
+        .catch(function () {
+          saveMsg(base + " · Este código no se ha podido apuntar en el histórico.", "err");
+        });
     } catch (e) {}
   }
 
@@ -1108,8 +1136,7 @@
   /* ---------------- render ---------------- */
 
   function render() {
-    saveMsg("");
-    dangerArmed = false;
+    clearSaveNote();
     el.save.textContent = "Guardar " + state.fmt.toUpperCase();
 
     if (!libOk) {
@@ -1240,10 +1267,14 @@
 
   /* ---------------- logo plumbing ---------------- */
 
-  function applyLogo(src, name, cb) {
-    var seq = ++loadSeq;
+  // El testigo se reclama al INICIAR la subida (en acceptFile), no aqui: normalise()
+  // es la parte lenta, y reclamarlo despues perdia justo la garantia de orden. Con una
+  // foto de 4 MB seguida de un PNG pequeno, el pequeno terminaba primero y la foto se
+  // imponia al acabar, dejando en el archivo descargado un logo que ya no era el elegido.
+  function applyLogo(src, name, seq, cb) {
+    if (seq == null) seq = ++loadSeq;         // llamada directa, sin subida previa
     decodeImage(src, function (err, img) {
-      if (seq !== loadSeq) return;            // a newer upload already won
+      if (seq !== loadSeq) return;            // ya gano una subida mas nueva
       if (err) { if (cb) cb(err); return; }
       logoImg = img;
       state.logoSrc = src;
@@ -1281,10 +1312,12 @@
 
   function acceptFile(file) {
     if (!file) return;
+    var seq = ++loadSeq;              // se reclama YA, antes de la parte lenta
     logoMsg("Abriendo la imagen…");
     normalise(file, function (err, src) {
+      if (seq !== loadSeq) return;    // mientras se procesaba llego otra mas nueva
       if (err) { logoMsg(err.message, "err"); return; }
-      applyLogo(src, file.name || "logo", function (err2) {
+      applyLogo(src, file.name || "logo", seq, function (err2) {
         if (err2) {
           logoMsg("Este navegador no puede abrir esa imagen. Vuelve a guardarla como PNG o JPG.", "err");
           return;
@@ -1412,8 +1445,9 @@
 
       if (downloadsApi) {
         downloadsApi.save({ filename: filename, data: blob }).then(function () {
-          saveMsg("Guardado como " + filename, "ok");
-          registrar();
+          var okMsg = "Guardado como " + filename;
+          saveMsg(okMsg, "ok");
+          registrar(okMsg);
         }).catch(function (err) {
           var code = err && err.code;
           if (code === "declined") { saveMsg("Guardado cancelado."); return; }
@@ -1433,26 +1467,43 @@
       a.click();
       document.body.removeChild(a);
       setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-      saveMsg("Si no aparece la descarga: " + LONG_PRESS);
-      registrar();
+      var dlMsg = "Si no aparece la descarga: " + LONG_PRESS;
+      saveMsg(dlMsg);
+      registrar("Guardado " + filename + ". " + dlMsg);
     }, mime, 0.95);
   });
 
   /* ---------------- boot ---------------- */
 
-  if (HISTORICO_URL && el["quien-field"]) el["quien-field"].hidden = false;
+  // Un GET al endpoint debe responder 405: eso demuestra que el PHP se esta
+  // ejecutando. Cualquier otra cosa (200 sirviendo el codigo fuente, 404, o un
+  // error de red) significa que ahi no hay historico, y entonces no se pide el
+  // nombre ni se intenta registrar: prometer un historico que no existe seria peor
+  // que no tenerlo.
+  if (HISTORICO_URL) {
+    try {
+      fetch(HISTORICO_URL, { method: "GET" }).then(function (r) {
+        historicoVivo = (r.status === 405);
+        if (historicoVivo && el["quien-field"]) el["quien-field"].hidden = false;
+      }).catch(function () {});
+    } catch (e) {}
+  }
   if (el.quien) {
     try { el.quien.value = localStorage.getItem(QUIEN_KEY) || ""; } catch (e) {}
     el.quien.addEventListener("change", function () {
       try { localStorage.setItem(QUIEN_KEY, el.quien.value.trim()); } catch (e) {}
     });
+    // Escribir aqui no repinta el codigo, asi que hay que limpiar a mano el
+    // "Guardado como...": si no, sigue afirmando un guardado que ya no describe
+    // lo que se ve.
+    el.quien.addEventListener("input", clearSaveNote);
   }
 
   var saved = recall();
   if (saved) {
     state.logoOn = true;
     el["logo-on"].checked = true;
-    applyLogo(saved.src, saved.name || "tu logo", function (err) {
+    applyLogo(saved.src, saved.name || "tu logo", null, function (err) {
       if (err) { try { localStorage.removeItem(STORE_KEY); } catch (e) {} clearLogo(); }
     });
   }

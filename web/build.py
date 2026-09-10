@@ -168,22 +168,41 @@ def main():
     if not os.path.exists(nojekyll):
         open(nojekyll, "w").close()
 
-    # El historico compartido y la proteccion del CSV viajan con la pagina.
+    # El historico compartido y la proteccion del CSV viajan con la pagina. Si falta
+    # alguno se PARA: dar el despliegue por bueno sin el .htaccess dejaria el
+    # historico, con las URL de todas las campanas, legible desde el navegador.
     copiados = []
     for nombre in ("registrar.php", ".htaccess"):
         origen = os.path.join(DEPLOY_DIR, nombre)
-        if os.path.exists(origen):
-            shutil.copy2(origen, os.path.join(OUT_DIR, nombre))
-            copiados.append(nombre)
+        if not os.path.exists(origen):
+            raise SystemExit(
+                "ERROR: falta web/deploy/%s, que tiene que viajar con la pagina.\n"
+                "Sin registrar.php no hay historico; sin .htaccess el historico "
+                "queda legible desde la web. No se genera nada hasta que este." % nombre
+            )
+        shutil.copy2(origen, os.path.join(OUT_DIR, nombre))
+        copiados.append(nombre)
 
     print("Generado docs/index.html (%d KB) desde web/index.html"
           % (len(rendered.encode("utf-8")) // 1024))
     if copiados:
         print("Copiados a docs/: %s" % ", ".join(copiados))
     print()
-    print("DESPLIEGUE: sube TODO el contenido de docs/ por FTP a la carpeta que sirva")
-    print("la pagina. El historico (registrar.php) necesita PHP, asi que funciona en")
-    print("vuestro hosting pero NO en GitHub Pages, que solo sirve archivos estaticos.")
+    print("DESPLIEGUE")
+    print("  1. Sube TODO el contenido de docs/ por FTP a la carpeta que sirva la pagina.")
+    print("     OJO con .htaccess: empieza por punto y la mayoria de clientes FTP lo")
+    print("     ocultan por defecto. Activa \"mostrar archivos ocultos\" o no subira, y sin")
+    print("     el, el historico queda legible desde el navegador.")
+    print("  2. Comprueba que el historico funciona: genera un codigo, guardalo, y mira")
+    print("     que aparezca historico.csv en la carpeta. Si no aparece, revisa el log de")
+    print("     errores de PHP del hosting.")
+    print("  3. Comprueba que el historico NO se puede leer desde fuera: abre en el")
+    print("     navegador https://tu-dominio/la-carpeta/historico.csv . Si te lo descarga,")
+    print("     el .htaccess no esta aplicando y hay que proteger la carpeta con .htpasswd.")
+    print()
+    print("  El historico necesita PHP, asi que funciona en vuestro hosting pero NO en")
+    print("  GitHub Pages, que solo sirve archivos estaticos. La pagina lo detecta sola y")
+    print("  en ese caso ni pide el nombre ni promete registrar nada.")
 
 
 if __name__ == "__main__":
